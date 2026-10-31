@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kartik Arya YT - Pro Link Unlocker</title>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCo1nvw9hhgGuupKmLBchux...",
+            authDomain: "proapk-779e8.firebaseapp.com",
+            projectId: "proapk-779e8",
+            storageBucket: "proapk-779e8.appspot.com",
+            messagingSenderId: "539703503273",
+            appId: "1:539703503273:web:fa9e3f5972"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        let itemsData = {};
+        let totalSubmissions = 0;
+        let selectedIndex = 1;
+        let adminClicks = 0;
+        let tempLogoFiles = {};
+
+        async function loadAppData() {
+            try {
+                // कुल सबमिशन लोड करें
+                const statsRef = doc(db, "app_data", "stats");
+                const statsSnap = await getDoc(statsRef);
+                if (statsSnap.exists()) {
+                    totalSubmissions = statsSnap.data().total_submissions || 0;
+                }
+
+                // सभी 50 आइटम्स को अलग-अलग डॉक्स से लोड करें
+                const querySnapshot = await getDocs(collection(db, "links_items"));
+                if (!querySnapshot.empty) {
+                    querySnapshot.forEach((docSnap) => {
+                        let id = docSnap.id.replace("item_", "");
+                        itemsData[id] = docSnap.data();
+                    });
+                }
+                
+                // अगर खाली हो तो डिफ़ॉल्ट सेट करें
+                for (let i = 1; i <= 50; i++) {
+                    if (!itemsData[i]) {
+                        itemsData[i] = { name: `Option / File ${i}`, link: `https://example.com/link${i}`, logo: '' };
+                    }
+                }
+            } catch (error) {
+                console.error("Load Error: ", error);
+                for (let i = 1; i <= 50; i++) {
+                    if(!itemsData[i]) itemsData[i] = { name: `Option / File ${i}`, link: `https://example.com/link${i}`, logo: '' };
+                }
+            }
+        }
+
+        window.goToScreen = function(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        window.startUnlockFlow = function() {
+            goToScreen('screen-telegram');
+        }
+
+        window.proceedToList = async function() {
+            await loadAppData();
+            goToScreen('screen-list');
+            renderList();
+        }
+
+        function renderList() {
+            let container = document.getElementById('itemsListContainer');
+            container.innerHTML = '';
+            for (let i = 1; i <= 50; i++) {
+                if(!itemsData[i]) itemsData[i] = { name: `Option / File ${i}`, link: `https://example.com/link${i}`, logo: '' };
+                let displayName = itemsData[i].name ? itemsData[i].name : `Option / File ${i}`;
+                let div = document.createElement('div');
+                div.className = 'list-item';
+                let logoSrc = itemsData[i].logo ? itemsData[i].logo : 'https://via.placeholder.com/40?text=' + i;
+                div.innerHTML = `
+                    <div class="list-item-left">
+                        <img src="${logoSrc}" class="item-logo-preview" alt="Logo">
+                        <span>#${i}. ${displayName}</span>
+                    </div>
+                    <span style="color: #facc15;">➔</span>
+                `;
+                div.onclick = () => openUploadScreen(i);
+                container.appendChild(div);
+            }
+        }
+
+        window.openUploadScreen = function(index) {
+            selectedIndex = index;
+            let itemName = itemsData[index] && itemsData[index].name ? itemsData[index].name : `Item ${index}`;
+            document.getElementById('uploadItemTitle').textContent = `#${index}: ${itemName}`;
+            document.getElementById('screenshotFile').value = '';
+            document.getElementById('errorMsg').style.display = 'none';
+            goToScreen('screen-upload');
+        }
+
+        window.startTimer = async function() {
+            let fileInput = document.getElementById('screenshotFile');
+            let errorMsg = document.getElementById('errorMsg');
+            if(fileInput.files.length === 0) {
+                errorMsg.textContent = 'कृपया पहले सब्सक्रिप्शन का स्क्रीनशॉट अपलोड करें!';
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            try {
+                totalSubmissions++;
+                const statsRef = doc(db, "app_data", "stats");
+                await setDoc(statsRef, { total_submissions: totalSubmissions });
+
+                let file = fileInput.files[0];
+                let storageRef = ref(storage, `screenshots/${Date.now()}_${file.name}`);
+                uploadBytes(storageRef, file).catch(e => console.log("Storage skipped:", e));
+            } catch (err) {
+                console.log("Submission count/storage error ignored");
+            }
+
+            goToScreen('screen-timer');
+            
+            let timeLeft = 15;
+            let totalTime = 15;
+            let countdownEl = document.getElementById('countdownNumber');
+            let circleProgress = document.getElementById('circleProgress');
+            
+            countdownEl.textContent = timeLeft;
+            let circumference = 2 * Math.PI * 45;
+
+            let timerInterval = setInterval(() => {
+                timeLeft--;
+                countdownEl.textContent = timeLeft;
+                
+                let offset = circumference - (timeLeft / totalTime) * circumference;
+                circleProgress.style.strokeDashoffset = offset;
+
+                if(timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    showFinalScreen();
+                }
+            }, 1000);
+        }
+
+        function showFinalScreen() {
+            let finalUrl = itemsData[selectedIndex] && itemsData[selectedIndex].link ? itemsData[selectedIndex].link : 'https://example.com';
+            document.getElementById('finalLinkBtn').href = finalUrl;
+            goToScreen('screen-final');
+        }
+
+        window.triggerAdmin = function() {
+            adminClicks++;
+            if(adminClicks >= 20) {
+                adminClicks = 0;
+                document.getElementById('adminPasswordInput').value = '';
+                document.getElementById('pwdError').style.display = 'none';
+                document.getElementById('passwordModal').style.display = 'flex';
+            }
+        }
+
+        window.closePasswordModal = function() {
+            document.getElementById('passwordModal').style.display = 'none';
+        }
+
+        window.verifyPassword = function() {
+            let pwd = document.getElementById('adminPasswordInput').value;
+            let pwdError = document.getElementById('pwdError');
+            if(pwd === "9129461967") {
+                closePasswordModal();
+                openAdmin();
+            } else {
+                pwdError.textContent = "गलत पासवर्ड!";
+                pwdError.style.display = 'block';
+            }
+        }
+
+        async function openAdmin() {
+            await loadAppData();
+            document.getElementById('dashboardCount').textContent = totalSubmissions;
+
+            let container = document.getElementById('adminRowsContainer');
+            container.innerHTML = '';
+            for (let i = 1; i <= 50; i++) {
+                if(!itemsData[i]) itemsData[i] = { name: '', link: '', logo: '' };
+                let row = document.createElement('div');
+                row.className = 'admin-row';
+                let currentLogo = itemsData[i].logo ? itemsData[i].logo : '';
+                row.innerHTML = `
+                    <div class="admin-logo-upload">
+                        <img id="thumb_${i}" src="${currentLogo || 'https://via.placeholder.com/45?text=Logo'}" class="admin-logo-thumb" alt="Logo">
+                        <input type="file" id="logo_file_${i}" accept="image/*" style="display:none;" onchange="previewLogo(event, ${i})">
+                        <button type="button" onclick="document.getElementById('logo_file_${i}').click()" style="background:#1e293b; color:#facc15; border:1px solid #334155; font-size:10px; padding:3px 6px; border-radius:6px; cursor:pointer; width:100%;">लोगो चुनें</button>
+                    </div>
+                    <div class="admin-row-inputs">
+                        <span style="font-size: 11px; color: #facc15; font-weight: bold;">#${i} आइटम</span>
+                        <input type="text" id="admin_name_${i}" value="${itemsData[i].name || ''}" class="admin-input" placeholder="नाम">
+                        <input type="text" id="admin_link_${i}" value="${itemsData[i].link || ''}" class="admin-input" placeholder="URL लिंक">
+                    </div>
+                `;
+                container.appendChild(row);
+            }
+            document.getElementById('adminPanelScreen').style.display = 'flex';
+        }
+
+        window.previewLogo = function(event, index) {
+            let file = event.target.files[0];
+            if (file) {
+                tempLogoFiles[index] = file;
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById(`thumb_${index}`).src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        window.closeAdmin = function() {
+            document.getElementById('adminPanelScreen').style.display = 'none';
+        }
+
+        window.saveAllAdminData = async function() {
+            showToast("सेव हो रहा है...");
+            try {
+                for (let i = 1; i <= 50; i++) {
+                    let nameEl = document.getElementById(`admin_name_${i}`);
+                    let linkEl = document.getElementById(`admin_link_${i}`);
+                    
+                    if(!itemsData[i]) itemsData[i] = { name: '', link: '', logo: '' };
+                    
+                    if(nameEl && nameEl.value.trim() !== "") {
+                        itemsData[i].name = nameEl.value.trim();
+                    }
+                    if(linkEl && linkEl.value.trim() !== "") {
+                        itemsData[i].link = linkEl.value.trim();
+                    }
+
+                    if(tempLogoFiles[i]) {
+                        try {
+                            let file = tempLogoFiles[i];
+                            let logoRef = ref(storage, `logos/item_${i}_${Date.now()}`);
+                            await uploadBytes(logoRef, file);
+                            let logoUrl = await getDownloadURL(logoRef);
+                            itemsData[i].logo = logoUrl;
+                        } catch(e) {
+                            console.log("Logo upload error:", e);
+                        }
+                    }
+
+                    // प्रत्येक आइटम को अलग से फायरबेस में सेव करें ताकि कभी एरर न आए
+                    const itemRef = doc(db, "links_items", `item_${i}`);
+                    await setDoc(itemRef, itemsData[i]);
+                }
+
+                tempLogoFiles = {};
+                closeAdmin();
+                showToast("सफलतापूर्वक सभी डेटा सेव हो गया!");
+                renderList();
+            } catch (error) {
+                console.error("Save error: ", error);
+                alert("Saving Error: " + error.message);
+            }
+        }
+
+        function showToast(text) {
+            let toast = document.getElementById('toastMsg');
+            toast.textContent = text;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        window.onload = loadAppData;
+    </script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body, html { width: 100%; height: 100%; background-color: #05070b; color: #ffffff; overflow-x: hidden; }
+        .fullscreen-app { width: 100vw; height: 100vh; display: flex; flex-direction: column; background: #0b0f19; position: relative; }
+        .screen { display: none; flex: 1; flex-direction: column; padding: 20px; overflow-y: auto; width: 100%; max-width: 600px; margin: 0 auto; }
+        .screen.active { display: flex; }
+        h1, h2, h3 { color: #facc15; text-align: center; margin-bottom: 15px; }
+        p { color: #94a3b8; font-size: 15px; text-align: center; margin-bottom: 20px; line-height: 1.6; }
+        .btn { width: 100%; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0b0f19; font-weight: bold; padding: 16px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; text-align: center; display: block; margin-top: 15px; text-decoration: none; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3); outline: none; }
+        .btn:active { transform: scale(0.98); }
+        .btn-green { background: linear-gradient(135deg, #22c55e, #16a34a); color: #ffffff; box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3); }
+        .btn-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #ffffff; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); }
+        .btn-secondary { background: #1e293b; color: #facc15; border: 1px solid #334155; }
+        .list-container { flex: 1; overflow-y: auto; padding-right: 5px; margin-top: 10px; }
+        .list-item { width: 100%; background: #131b2e; border: 1px solid #1e293b; color: #facc15; padding: 12px 16px; border-radius: 16px; text-align: left; margin-bottom: 12px; cursor: pointer; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+        .list-item-left { display: flex; align-items: center; gap: 12px; }
+        .item-logo-preview { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; background: #07090e; border: 1px solid #334155; }
+        .upload-box { background: #131b2e; border: 2px dashed #334155; padding: 30px 20px; border-radius: 20px; text-align: center; margin: 20px 0; }
+        input[type="file"] { width: 100%; color: #94a3b8; font-size: 14px; margin-top: 15px; }
+        
+        /* सर्कुलर एनीमेशन टाइमर */
+        .timer-container { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 30px 0; position: relative; }
+        .circular-timer { width: 140px; height: 140px; position: relative; transform: rotate(-90deg); }
+        .circular-timer circle { width: 100%; height: 100%; fill: none; stroke-width: 8; stroke-linecap: round; }
+        .timer-bg-path { stroke: #1e293b; }
+        .timer-progress-path { stroke: #facc15; stroke-dasharray: 283; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear; }
+        .timer-number-box { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .timer-number { font-size: 36px; font-weight: bold; color: #facc15; }
+
+        .back-link { background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; margin-bottom: 15px; text-align: left; display: inline-block; text-decoration: underline; outline: none; }
+        .custom-modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(5, 7, 11, 0.95); z-index: 2000; justify-content: center; align-items: center; padding: 20px; }
+        .modal-content { background: #131b2e; border: 1px solid #334155; padding: 25px; border-radius: 20px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .admin-input { width: 100%; background: #07090e; border: 1px solid #334155; color: #fff; padding: 12px; border-radius: 10px; margin-bottom: 8px; font-size: 14px; outline: none; }
+        #adminPanelScreen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0b0f19; z-index: 1500; padding: 20px; flex-direction: column; }
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #1e293b; padding-bottom: 15px; }
+        .admin-close { background: #ef4444; color: white; border: none; padding: 10px 18px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .admin-dashboard-box { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; padding: 15px; border-radius: 14px; margin-bottom: 15px; text-align: center; }
+        .admin-list-container { flex: 1; overflow-y: auto; padding-right: 5px; }
+        .admin-row { background: #131b2e; border: 1px solid #1e293b; padding: 14px; border-radius: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+        .admin-row-inputs { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        .admin-logo-upload { width: 60px; text-align: center; }
+        .admin-logo-thumb { width: 45px; height: 45px; border-radius: 10px; object-fit: cover; background: #07090e; border: 1px solid #334155; margin-bottom: 4px; display: block; margin-left: auto; margin-right: auto; }
+        #toastMsg { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #22c55e; color: #0b0f19; font-weight: bold; padding: 12px 24px; border-radius: 30px; box-shadow: 0 5px 20px rgba(34,197,94,0.4); transition: transform 0.3s ease; z-index: 3000; font-size: 14px; }
+        #toastMsg.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+    <div class="fullscreen-app">
+        <!-- Screen 1: Welcome Screen -->
+        <div id="screen-welcome" class="screen active" style="justify-content: center; align-items: center; text-align: center;">
+            <div style="font-size: 60px; cursor: pointer; margin-bottom: 20px; background: #131b2e; padding: 20px; border-radius: 30px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.5); user-select: none;" onclick="triggerAdmin()">🔥</div>
+            <h1 style="font-size: 28px;">Welcome to Kartik Arya Subscribers</h1>
+            <p style="margin-top: 10px;">चैनल सब्सक्राइब करें, स्क्रीनशॉट अपलोड करें और तुरंत अपने पसंदीदा लिंक्स प्राप्त करें!</p>
+            <button class="btn" onclick="startUnlockFlow()" style="margin-top: 30px;">🚀 Get Started</button>
+        </div>
+
+        <!-- Screen 2: Telegram Join Step Screen -->
+        <div id="screen-telegram" class="screen" style="justify-content: center; align-items: center; text-align: center;">
+            <div style="font-size: 50px; margin-bottom: 15px;">📢</div>
+            <h2>स्टेप 1: टेलीग्राम चैनल ज्वाइन करें</h2>
+            <p>फ्री लिंक्स अनलॉक करने के लिए हमारा ऑफिशियल टेलीग्राम चैनल ज्वाइन करें:</p>
+            
+            <a href="https://t.me/+_w5V2fIoUIpjYjk1" target="_blank" class="btn btn-blue" style="margin-top: 15px;">
+                ✈️ Telegram Channel Join करें
+            </a>
+            
+            <button class="btn btn-green" onclick="proceedToList()" style="margin-top: 15px;">
+                ✅ मैंने ज्वाइन कर लिया है (आगे बढ़ें)
+            </button>
+
+            <button class="back-link" onclick="goToScreen('screen-welcome')" style="margin-top: 20px; display: inline-block;">← वापस जाएं</button>
+        </div>
+
+        <!-- Screen 3: List Screen -->
+        <div id="screen-list" class="screen">
+            <button class="back-link" onclick="goToScreen('screen-telegram')">← पीछे जाएं</button>
+            <h2>सभी लिंक्स (1 - 50)</h2>
+            <p>सूची से किसी भी विकल्प पर क्लिक करें:</p>
+            <div class="list-container" id="itemsListContainer"></div>
+        </div>
+
+        <!-- Screen 4: Upload Screen -->
+        <div id="screen-upload" class="screen">
+            <button class="back-link" onclick="goToScreen('screen-list')">← लिस्ट पर वापस</button>
+            <h2 id="uploadItemTitle" style="font-size: 22px; margin-top: 10px;">Item Title</h2>
+            <p>चैनल को सब्सक्राइब करने के बाद उसका स्क्रीनशॉट नीचे अपलोड करें:</p>
+            <div class="upload-box">
+                <p style="font-size: 15px; color: #facc15; font-weight: bold;">📷 स्क्रीनशॉट यहाँ अपलोड करें</p>
+                <input type="file" id="screenshotFile" accept="image/*">
+            </div>
+            <button class="btn btn-green" onclick="startTimer()">✅ स्क्रीनशॉट अपलोड करके वेरीफाई करें</button>
+            <p id="errorMsg" style="color: #ef4444; font-size: 13px; margin-top: 10px; display: none;"></p>
+        </div>
+
+        <!-- Screen 5: Animated Timer Screen -->
+        <div id="screen-timer" class="screen" style="justify-content: center; align-items: center; text-align: center;">
+            <h2 style="margin-bottom: 5px;">लिंक तैयार हो रहा है...</h2>
+            <p style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">कृपया प्रतीक्षा करें</p>
+            
+            <div class="timer-container">
+                <svg class="circular-timer" viewBox="0 0 100 100">
+                    <circle class="timer-bg-path" cx="50" cy="50" r="45"></circle>
+                    <circle id="circleProgress" class="timer-progress-path" cx="50" cy="50" r="45"></circle>
+                </svg>
+                <div class="timer-number-box">
+                    <span id="countdownNumber" class="timer-number">15</span>
+                </div>
+            </div>
+
+            <p style="font-size: 13px; color: #facc15;">आपका सुरक्षित लिंक अनलॉक हो रहा है...</p>
+        </div>
+
+        <!-- Screen 6: Final Screen -->
+        <div id="screen-final" class="screen" style="justify-content: center; align-items: center; text-align: center;">
+            <div style="font-size: 65px; margin-bottom: 20px;">🎉</div>
+            <h2 style="font-size: 24px;">लिंक मिल गया है!</h2>
+            <p>नीचे दिए गए बटन से अपना लिंक ओपन करें:</p>
+            <a id="finalLinkBtn" href="#" target="_blank" class="btn btn-green" style="margin-top: 20px;">📥 लिंक ओपन / डाउनलोड करें</a>
+            <button class="btn btn-secondary" onclick="goToScreen('screen-list')" style="margin-top: 15px;">दूसरी लिस्ट पर जाएं</button>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="passwordModal" class="custom-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 10px;">🔐 एडमिन एक्सेस</h3>
+            <p style="font-size: 13px; margin-bottom: 15px;">कृपया पासवर्ड दर्ज करें:</p>
+            <input type="password" id="adminPasswordInput" class="admin-input" placeholder="पासवर्ड डालें" style="text-align: center;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" onclick="closePasswordModal()" style="margin-top:0;">रद्द करें</button>
+                <button class="btn" onclick="verifyPassword()" style="margin-top:0;">लॉगिन</button>
+            </div>
+            <p id="pwdError" style="color: #ef4444; font-size: 12px; margin-top: 10px; display: none;"></p>
+        </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="adminPanelScreen">
+        <div class="admin-header">
+            <div>
+                <h2 style="text-align: left; margin: 0; font-size: 20px;">⚙️ एडमिन पैनल</h2>
+                <p style="text-align: left; margin: 0; font-size: 12px;">डैशबोर्ड और सेटिंग्स</p>
+            </div>
+            <button class="admin-close" onclick="closeAdmin()">✕ बंद करें</button>
+        </div>
+
+        <div class="admin-dashboard-box">
+            <p style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">📊 कुल लोगों ने लिंक प्राप्त किया (Submissions)</p>
+            <h2 id="dashboardCount" style="font-size: 32px; color: #22c55e; margin: 0;">0</h2>
+        </div>
+
+        <div class="admin-list-container" id="adminRowsContainer"></div>
+        <button class="btn btn-green" style="margin-top: 15px;" onclick="saveAllAdminData()">💾 सभी बदलाव सेव करें</button>
+    </div>
+
+    <div id="toastMsg">सफलतापूर्वक सेव हो गया!</div>
+</body>
+</html>
